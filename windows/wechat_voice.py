@@ -223,6 +223,11 @@ def clean_for_speech(s):
     return t, is_media
 
 
+def clean_name(s):
+    t = re.sub("[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F\u200D]", "", s).strip()
+    return t or s
+
+
 def truncate(s, n):
     return s if n <= 0 or len(s) <= n else s[:n] + "，等等"
 
@@ -262,6 +267,10 @@ def classify(title, sub, body):
         return Event("generic", "", None, body)
     if sub and sub != title:
         return Event("message", title, sub, body)
+    m = re.match(r"^([^\n]{1,40}?): (.*)$", body, re.S)  # 群消息“发言人: 内容”，发言人可含空格/表情
+    if m and "http" not in m.group(1):
+        who = m.group(1).strip()
+        return Event("message", title, None if who == title else who, m.group(2))
     m = re.match(r"^([^:：\n]{1,24})[:：]\s*(.*)$", body, re.S)
     if m:
         who = m.group(1).strip()
@@ -301,13 +310,15 @@ def build_phrases(events, cfg):
         lst = by[chat]
         last, k = lst[-1], len(lst)
         is_group = any(x.sender for x in lst)
-        name = chat or "有人"
+        name = clean_name(chat) if chat else "有人"
         gname = name if name.endswith("群") else name + "群"
         text, media = clean_for_speech(last.content)
+        if not any(ch.isalnum() for ch in text):  # 只有标点，如“。”
+            text, media = "一条消息", True
         content = truncate(text, max_chars)
         p = pre(any(x.vip for x in lst))
         if is_group:
-            who = last.sender or "有人"
+            who = clean_name(last.sender or "有人")
             if not read_content or not read_groups or not content:
                 out.append(p + (f"{gname}里有{k}条新消息" if k > 1 else f"{gname}里有新消息"))
             else:
@@ -755,7 +766,8 @@ def cli(argv):
         cfg = Config()
         cases = [("王总", "", "方案我看了，下午三点前能改好吗？"), ("王总", "", "[图片]"),
                  ("项目群", "", "[3条]张三: 明天几点开会[微笑] https://a.com/x"), ("微信", "", "李小姐请求添加你为朋友"),
-                 ("王总", "", "邀请你进行视频通话"), ("微信", "", "你收到了一条消息")]
+                 ("王总", "", "邀请你进行视频通话"), ("微信", "", "你收到了一条消息"),
+                 ("3w usd", "", "杨安钰 小🐑 isfj双鱼 2.21: [图片] "), ("Claire虫虫 entj", "", "。"), ("永远的301", "", "成立: 门变了[Lol]")]
         for c in cases:
             print(c[0], "|", c[2], "\n   →", " / ".join(build_phrases([classify(*c)], cfg)))
         print("合并：", " / ".join(build_phrases([classify(*c) for c in cases[:3]], cfg)))

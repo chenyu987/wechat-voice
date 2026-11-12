@@ -235,6 +235,12 @@ func cleanForSpeech(_ s: String) -> (text: String, isMedia: Bool) {
     return (t, isMedia)
 }
 
+/// 名字里的表情符号去掉，免得念出奇怪的声音
+func cleanName(_ s: String) -> String {
+    let t = rxReplace(s, "[\\x{1F000}-\\x{1FAFF}\\x{2600}-\\x{27BF}\\x{FE0F}\\x{200D}]", "").trimmingCharacters(in: .whitespaces)
+    return t.isEmpty ? s : t
+}
+
 func truncate(_ s: String, _ n: Int) -> String {
     guard n > 0, s.count > n else { return s }
     return String(s.prefix(n)) + "，等等"
@@ -283,6 +289,12 @@ func classify(_ n: RawNotif) -> Event {
     // 群消息：正文形如 “张三: 内容”
     if !sub.isEmpty && sub != title {
         return Event(kind: .message, chat: title, sender: sub, content: body)
+    }
+    // 微信 Mac 版群消息固定格式：“发言人: 内容”（英文冒号+空格），发言人可含空格和表情
+    if let g = rxGroups(body, "^([^\\n]{1,40}?): (.*)$") {
+        let who = g[1].trimmingCharacters(in: .whitespaces)
+        if who == title { return Event(kind: .message, chat: title, sender: nil, content: g[2]) }
+        if !who.contains("http") { return Event(kind: .message, chat: title, sender: who, content: g[2]) }
     }
     if let g = rxGroups(body, "^([^:：\\n]{1,24})[:：]\\s*(.*)$") {
         let who = g[1].trimmingCharacters(in: .whitespaces)
@@ -337,14 +349,15 @@ func buildPhrases(_ events: [Event], cfg: Config) -> [String] {
         let last = list.last!
         let k = list.count
         let isGroup = list.contains { $0.sender != nil }
-        let name = chat.isEmpty ? "有人" : chat
+        let name = chat.isEmpty ? "有人" : cleanName(chat)
         let gname = name.hasSuffix("群") ? name : name + "群"
-        let (text, isMedia) = cleanForSpeech(last.content)
+        var (text, isMedia) = cleanForSpeech(last.content)
+        if text.rangeOfCharacter(from: .alphanumerics) == nil { text = "一条消息"; isMedia = true }  // 只有标点，如“。”
         let content = truncate(text, maxChars)
         let pre = list.contains { $0.isVip } ? (vipPrefix.isEmpty ? "" : vipPrefix + "，") : ""
 
         if isGroup {
-            let who = last.sender ?? "有人"
+            let who = cleanName(last.sender ?? "有人")
             if !readContent || !readGroups || content.isEmpty {
                 out.append(pre + (k > 1 ? "\(gname)里有\(k)条新消息" : "\(gname)里有新消息"))
             } else {
@@ -720,6 +733,9 @@ func runCLI(_ args: [String]) -> Bool {
             RawNotif(title: "新的朋友", subtitle: "", body: "Tom 请求添加你为朋友"),
             RawNotif(title: "王总", subtitle: "", body: "邀请你进行视频通话"),
             RawNotif(title: "微信", subtitle: "", body: "你收到了一条消息"),
+            RawNotif(title: "3w usd", subtitle: "", body: "杨安钰 小🐑 isfj双鱼 2.21: [图片] "),
+            RawNotif(title: "Claire虫虫 entj", subtitle: "", body: "。"),
+            RawNotif(title: "永远的301", subtitle: "", body: "成立: 门变了[Lol]"),
         ]
         let cfg = Config()
         for c in cases { print("\(c.title) | \(c.body)\n   → \(buildPhrases([classify(c)], cfg: cfg).joined(separator: " / "))") }
