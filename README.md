@@ -82,4 +82,26 @@ cat ~/Library/Application\ Support/WeChatVoice/log.txt
 
 ## Windows 版
 
-开发中。
+**下载：** [WeChatVoice.exe](https://github.com/chenyu987/wechat-voice/releases/download/windows-latest/WeChatVoice.exe)（每次更新代码会自动重新打包）
+
+1. 下载后双击运行。第一次可能弹出“Windows 已保护你的电脑”，点“更多信息 → 仍要运行”（因为这个小程序没有花钱买签名证书）。
+2. 运行后会念“微信语音播报已启动”，右下角托盘（可能在 ^ 小箭头里）出现绿色气泡图标，右键它就是菜单，功能和 Mac 版一样。
+3. 默认会设置成开机自动启动，不想要可以在菜单里取消。
+
+前提：**Windows 版微信要会弹出 Windows 系统通知**（屏幕右下角的通知横幅，或者在通知中心里能看到微信的通知）。
+如果微信来消息时只是任务栏图标闪、没有系统通知，这个版本就报不出来。可以检查：
+- 微信 → 设置 → 通知：打开新消息通知
+- Windows 设置 → 系统 → 通知：打开通知总开关，列表里的“微信 / Weixin”也要打开；关掉“请勿打扰”和专注模式
+
+### 测试反馈（请帮忙）
+
+收到几条微信后，在命令行（Win+R 输入 cmd）运行：
+
+```
+%USERPROFILE%\Downloads\WeChatVoice.exe --dump 40
+```
+
+然后把 `%APPDATA%\WeChatVoice\dump.txt` 和 `%APPDATA%\WeChatVoice\log.txt` 发回来（里面有通知内容，介意的话可以把文字打码，保留格式就行）。
+dump.txt 里带【微信】标记的行越多越好；如果一行都没有，说明这台电脑上的微信没有走 Windows 系统通知。
+
+设置文件在 `%APPDATA%\WeChatVoice\config.json`，选项和 Mac 版一样（`rate` 是 -10 到 10，`voice` 留空自动用中文声音）。
