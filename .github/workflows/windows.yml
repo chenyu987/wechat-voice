@@ -1,0 +1,40 @@
+name: Build Windows exe
+
+on:
+  push:
+    branches: [main]
+    paths: ["windows/**", ".github/workflows/windows.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          pip install -r windows/requirements.txt pyinstaller==6.11.1
+      - name: Self test
+        run: python windows/wechat_voice.py --selftest
+      - name: Build
+        working-directory: windows
+        run: |
+          python -c "from PIL import Image; Image.open('icon.png').save('icon.ico', sizes=[(16,16),(32,32),(48,48),(256,256)])"
+          pyinstaller --noconfirm --onefile --windowed --name WeChatVoice --icon icon.ico --hidden-import pystray._win32 wechat_voice.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WeChatVoice-windows
+          path: windows/dist/WeChatVoice.exe
+      - name: Publish to "latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: windows-latest
+          name: Windows 版（自动构建）
+          prerelease: true
+          files: windows/dist/WeChatVoice.exe
