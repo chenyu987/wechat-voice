@@ -176,7 +176,7 @@ final class NotifDB {
     /// 最近 n 条（调试用）
     func recent(_ n: Int) -> [Row] {
         guard let m = maxId() else { return [] }
-        return fetch(after: max(0, m - Int64(n * 20)), limit: 100000).suffix(n).map { $0 }
+        return (fetch(after: max(0, m - Int64(n * 20)), limit: 100000) ?? []).suffix(n).map { $0 }
     }
 }
 
@@ -338,6 +338,7 @@ func buildPhrases(_ events: [Event], cfg: Config) -> [String] {
         let k = list.count
         let isGroup = list.contains { $0.sender != nil }
         let name = chat.isEmpty ? "有人" : chat
+        let gname = name.hasSuffix("群") ? name : name + "群"
         let (text, isMedia) = cleanForSpeech(last.content)
         let content = truncate(text, maxChars)
         let pre = list.contains { $0.isVip } ? (vipPrefix.isEmpty ? "" : vipPrefix + "，") : ""
@@ -345,9 +346,9 @@ func buildPhrases(_ events: [Event], cfg: Config) -> [String] {
         if isGroup {
             let who = last.sender ?? "有人"
             if !readContent || !readGroups || content.isEmpty {
-                out.append(pre + (k > 1 ? "\(name)群里有\(k)条新消息" : "\(name)群里有新消息"))
+                out.append(pre + (k > 1 ? "\(gname)里有\(k)条新消息" : "\(gname)里有新消息"))
             } else {
-                let head = k > 1 ? "\(name)群里有\(k)条新消息，最新是\(who)" : "\(name)群里，\(who)"
+                let head = k > 1 ? "\(gname)里有\(k)条新消息，最新是\(who)" : "\(gname)里，\(who)"
                 out.append(pre + head + (isMedia ? "发了\(content)" : "说：\(content)"))
             }
         } else {
@@ -694,14 +695,21 @@ func runCLI(_ args: [String]) -> Bool {
     switch cmd {
     case "--dump":   // 打印最近的通知（看格式用）
         let db = NotifDB()
-        if let e = db.open() { print("错误：\(e)"); exit(1) }
-        print("数据库：\(db.path ?? "")")
+        if let e = db.open() {
+            try? FileManager.default.createDirectory(atPath: appSupport, withIntermediateDirectories: true)
+            try? "错误：\(e)\n".write(toFile: appSupport + "/dump.txt", atomically: true, encoding: .utf8)
+            print("错误：\(e)"); exit(1)
+        }
+        // 同时写到 dump.txt：用 open 启动时（拥有本程序的磁盘权限）也能看到结果
+        var out = "数据库：\(db.path ?? "")\n"
         for r in db.recent(Int(args.dropFirst(2).first ?? "30") ?? 30) {
             let n = parseNotif(r.data)
             let mark = isWeChat(r.bundle) ? "【微信】" : ""
-            print("#\(r.id) \(mark)\(r.bundle) | 标题=\(n?.title ?? "?") | 副标题=\(n?.subtitle ?? "") | 正文=\(n?.body ?? "?")")
-            if isWeChat(r.bundle), let n = n { print("   → 会播报：\(buildPhrases([classify(n)], cfg: Config()).joined(separator: " / "))") }
+            out += "#\(r.id) \(mark)\(r.bundle) | 标题=\(n?.title ?? "?") | 副标题=\(n?.subtitle ?? "") | 正文=\(n?.body ?? "?")\n"
+            if isWeChat(r.bundle), let n = n { out += "   → 会播报：\(buildPhrases([classify(n)], cfg: Config()).joined(separator: " / "))\n" }
         }
+        print(out, terminator: "")
+        try? out.write(toFile: appSupport + "/dump.txt", atomically: true, encoding: .utf8)
         exit(0)
     case "--selftest":
         let cases: [RawNotif] = [
